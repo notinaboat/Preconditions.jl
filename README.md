@@ -9,14 +9,16 @@ end
 From [HTTP.jl/src/debug.jl](https://git.io/JWkNl)
 
 
-    @require precondition [message]
+### `Preconditions.@require`
+
+    @require precondition [message] [variables...]
 
 Throw `ArgumentError` if `precondition` is false.
+Include the value of `variables...` in the error message.
 
+
+### `Preconditions.@ensure`
 
     @ensure postcondition [message]
 
-Throw `ArgumentError` if `postcondition` is false.
-
-
-
+Throw `AssertionError` if `postcondition` is false.
