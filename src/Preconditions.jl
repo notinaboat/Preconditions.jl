@@ -9,11 +9,32 @@ From [HTTP.jl/src/debug.jl](https://git.io/JWkNl)
 """
 module Preconditions
 
+const USE_PREFERENCES_JL = VERSION >= v"1.6"
+@static if USE_PREFERENCES_JL
+using Preferences
+end
 using ReadmeDocs
 
-const DEBUG_LEVEL = Ref(0)
-
 export @require, @ensure
+
+
+@static if USE_PREFERENCES_JL
+const check_preconditions = @load_preference("check_preconditions", true)
+enable_preconditions(x=true) = @set_preferences!("check_preconditions" => x)
+disable_preconditions() = enable_preconditions(false)
+
+const check_postconditions = @load_preference("check_postconditions", true)
+enable_postconditions(x=true) = @set_preferences!("check_postconditions" => x)
+disable_postconditions() = enable_postconditions(false)
+
+function __init__()
+    check_preconditions || @warn "Precondition checking is disabled!"
+    check_postconditions || @warn "Postcondition checking is disabled!"
+end
+end # @static if USE_PREFERENCES_JL
+
+const check_preconditions = true
+const check_postconditions = true
 
 
 function method_name(bt)
@@ -49,6 +70,9 @@ Throw `ArgumentError` if `precondition` is false.
 Include the value of `variables...` in the error message.
 """
 macro require(condition, args...)
+
+    check_preconditions || return :()
+
     if length(args) > 0 && args[1] isa String
         msg = args[1]
         args = args[2:end]
@@ -97,9 +121,7 @@ Throw `AssertionError` if `postcondition` is false.
 """
 macro ensure(condition, msg = string(condition))
 
-    if DEBUG_LEVEL[] < 0
-        return :()
-    end
+    check_postconditions || return :()
 
     if iscondition(condition)
         f, l, r = condition.args
