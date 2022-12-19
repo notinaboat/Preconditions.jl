@@ -31,10 +31,11 @@ function __init__()
     check_preconditions || @warn "Precondition checking is disabled!"
     check_postconditions || @warn "Postcondition checking is disabled!"
 end
-end # @static if USE_PREFERENCES_JL
-
+else
 const check_preconditions = true
 const check_postconditions = true
+end # @static if USE_PREFERENCES_JL
+
 
 
 function method_name(bt)
