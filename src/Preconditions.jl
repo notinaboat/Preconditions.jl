@@ -37,27 +37,19 @@ const check_postconditions = true
 end # @static if USE_PREFERENCES_JL
 
 
-
-function method_name(bt)
-    for f in bt
-        for i in StackTraces.lookup(f)
-            if !i.from_c &&
-               i.linfo != nothing &&
-               !(contains(string(i.func), "precondition_error")) &&
-               !(contains(string(i.func), "postcondition_error")) &&
-               i.func != :backtrace 
-
-               return i.func
-            end
-        end
-    end
-    return "unknown method"
+# Get the calling function. See https://github.com/JuliaLang/julia/issues/6733
+# (The macro form @__FUNCTION__ is hard to escape correctly, so just us a function.)
+function _funcname_expr()
+    :(
+        $(Expr(:isdefined, Symbol("#self#"))) ?
+        nameof($(Symbol("#self#"))) :
+        nothing
+    )
 end
 
-
-@noinline function precondition_error(msg::String; args...)
+@noinline function precondition_error(msg::String, method_name; args...)
     @nospecialize
-    msg = string(method_name(backtrace()), " requires ", msg)
+    msg = "$method_name requires $msg"
     @error msg args...
     msg = string(msg, (", $k=$v" for (k,v) in args)...)
     return ArgumentError(msg)
@@ -85,16 +77,21 @@ macro require(condition, args...)
             throw(ArgumentError("Invalid `@require` variable name: $a"))
         end
     end
-    esc(:($condition || throw(Preconditions.precondition_error($msg; $(args...)))))
+    esc(:($condition ||
+        throw(Preconditions.precondition_error($msg, $(_funcname_expr());
+                                               $(args...)))))
 end
 
 
-@noinline function postcondition_error(msg::String, ls="", l="", rs="", r="")
+@noinline function postcondition_error(msg::String, method_name,
+                                       ls="", l="", rs="", r="")
     @nospecialize
-    msg = string(method_name(backtrace()), " failed to ensure ", msg)
-    Main.eval(:(@error($msg, $(Symbol(ls))=$(QuoteNode(l)),
-                             $(Symbol(rs))=$(QuoteNode(r)))))
-    if ls != ""
+    msg = "$method_name failed to ensure $msg"
+    if ls == ""
+        Main.eval(:(@error($msg)))
+    else
+        Main.eval(:(@error($msg, $(Symbol(ls))=$(QuoteNode(l)),
+                                 $(Symbol(rs))=$(QuoteNode(r)))))
         msg = string(msg, "\n", ls, " = ", sprint(show, l),
                           "\n", rs, " = ", sprint(show, r))
     end
@@ -130,14 +127,16 @@ macro ensure(condition, msg = string(condition))
         return esc(quote
             let l = $l, r = $r
                 if ! $f(l,r)
-                    throw(Preconditions.postcondition_error($msg,
+                    throw(Preconditions.postcondition_error($msg, $(_funcname_expr()),
                                                             $ls, l, $rs, r))
                 end
             end
         end)
     end
 
-    esc(:(if ! $condition throw(Preconditions.postcondition_error($msg)) end))
+    esc(:(if ! $condition
+        throw(Preconditions.postcondition_error($msg, $(_funcname_expr())))
+    end))
 end
 
 
